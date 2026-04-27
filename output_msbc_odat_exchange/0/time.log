@@ -1,0 +1,11 @@
+#in units of seconds
+#init
+ total = 0.0005206998903304338
+#prepare
+ total = 2.3997854441404343e-06
+#run
+ total = 82.68936139997095
+ - submit = 82.09767190483399
+ - exchange = 1.3500219210982323e-05
+#post
+ total = 0.13717860006727278

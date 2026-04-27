@@ -1,0 +1,27 @@
+[base]
+dimension = 3
+output_dir = "./output_msbc_odat_exchange"
+
+[solver]
+name = "user"
+
+[algorithm]
+name = "exchange"
+seed = 12345
+
+[algorithm.param]
+min_list = [6.0, 0.008, 8.0]
+max_list = [8.0, 0.05, 9.2]
+step_list = [0.1, 0.005, 0.1]
+
+[algorithm.exchange]
+numsteps_exchange = 200
+numsteps = 10000
+bmin = 1e-2
+bmax = 1e2
+
+[runner]
+ignore_error = true
+
+[runner.log]
+interval = 20

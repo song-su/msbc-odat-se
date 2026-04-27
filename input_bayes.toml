@@ -1,0 +1,28 @@
+[base]
+dimension = 3
+output_dir = "./output_msbc_odat_bayes"
+
+[solver]
+name = "user"
+
+[algorithm]
+name = "bayes"
+seed = 12345
+
+[algorithm.param]
+min_list = [6.0, 0.008, 8.0]
+max_list = [8.0, 0.05, 9.2]
+num_list = [21, 9, 7]
+
+[algorithm.bayes]
+random_max_num_probes = 12
+bayes_max_num_probes = 30
+score = "TS"
+interval = 5
+num_rand_basis = 5000
+
+[runner]
+ignore_error = true
+
+[runner.log]
+interval = 20

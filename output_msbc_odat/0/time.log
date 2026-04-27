@@ -1,0 +1,11 @@
+#in units of seconds
+#init
+ total = 0.0004859999753534794
+#prepare
+ total = 2.09989957511425e-06
+#run
+ total = 8.0226048999466
+ - submit = 7.925974500831217
+ - resampling = 0.010055799968540668
+#post
+ total = 0.0017665999475866556

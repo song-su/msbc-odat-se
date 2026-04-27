@@ -1,0 +1,26 @@
+# $1: 1/T
+# $2: mean of f(x)
+# $3: standard error of f(x)
+# $4: number of replicas
+# $5: log(Z/Z0)
+# $6: acceptance ratio
+0.01 nan nan 1 0.0 0.48
+0.016237767391887217 nan nan 1 -inf 0.08
+0.026366508987303583 nan nan 1 -inf 0.02
+0.04281332398719394 nan nan 1 -inf 0.0
+0.06951927961775606 nan nan 1 -inf 0.0
+0.11288378916846889 nan nan 1 -inf 0.0
+0.18329807108324356 nan nan 1 -inf 0.04
+0.29763514416313175 nan nan 1 -inf 0.0
+0.4832930238571752 nan nan 1 -inf 0.0
+0.7847599703514611 nan nan 1 -inf 0.0
+1.2742749857031335 nan nan 1 -inf 0.0
+2.06913808111479 nan nan 1 -inf 0.0
+3.359818286283781 nan nan 1 -inf 0.0
+5.455594781168514 nan nan 1 -inf 0.0
+8.858667904100823 nan nan 1 -inf 0.0
+14.38449888287663 nan nan 1 -inf 0.0
+23.357214690901213 nan nan 1 -inf 0.0
+37.92690190732246 nan nan 1 -inf 0.0
+61.584821106602604 nan nan 1 -inf 0.0
+100.0 nan nan 1 -inf 0.0

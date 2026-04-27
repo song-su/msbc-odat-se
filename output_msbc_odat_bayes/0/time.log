@@ -1,0 +1,11 @@
+#in units of seconds
+#init
+ total = 0.0
+#prepare
+ total = 2.600019797682762e-06
+#run
+ total = 11.890308800153434
+ - random_search = 0.30823659989982843
+ - bayes_search = 11.579373300075531
+#post
+ total = 0.0035465999972075224
