@@ -13,8 +13,11 @@ The original implementation was developed in MATLAB.
 In this project, the method is:
 
 Reimplemented in Python
+
 Enhanced with Bayesian optimization
-Improved using Chauvenet’s criterion
+
+Improved using Chauvenet’s criterion to mask peaks
+
 Further integrated into the ODAT-SE optimization framework
 
 Requirements
@@ -27,8 +30,9 @@ ODAT-SE Integration
 
 The MSBC model is integrated into the ODAT-SE framework, enabling:
 
-Global parameter search
+Global parameter search,
 High-dimensional optimization
+
 Advanced sampling strategies:
 PAMC (Parallel Annealing Monte Carlo)
 Bayesian search
@@ -43,6 +47,9 @@ python msbc_odat_solver.py input_xxx.py
 Output
 Baseline-corrected spectra
 Residuals:
+
 (raw−baseline)/y0
+
 Optimization logs
+
 Visualization plots
