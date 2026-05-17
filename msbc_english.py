@@ -167,9 +167,9 @@ def msbc(data, lambda_param, mu0, p=0.001, max_iter=10, tol=1e-6):
     z0 = np.percentile(data_clean, 10, axis=1).reshape(-1, 1) * np.ones((1, n))
     a0 = np.ones(m)
 
-    a_history = []
     z = np.zeros((m, n))
     z_prev = np.copy(z0)
+    a0_prev = np.ones(m)
 
     converged = False
 
@@ -219,18 +219,16 @@ def msbc(data, lambda_param, mu0, p=0.001, max_iter=10, tol=1e-6):
         else:
             a0 = np.ones(m)
 
-        a_history.append(a0.copy())
-
-        # Convergence check (relative change)
-        change = np.linalg.norm(z - z_prev) / max(np.linalg.norm(z_prev), 1e-12)
-        if change < tol:
+        # Convergence check: both z and a0 must stabilize
+        z_change = np.linalg.norm(z - z_prev) / max(np.linalg.norm(z_prev), 1e-12)
+        a0_change = np.linalg.norm(a0 - a0_prev) / max(np.linalg.norm(a0_prev), 1e-12)
+        if z_change < tol and a0_change < tol:
             converged = True
             break
         z_prev = np.copy(z)
+        a0_prev = a0.copy()
 
-    a = np.array(a_history).T if a_history else np.ones((m, 1))
-
-    return z, a, converged
+    return z, converged
 
 
 # ==================== Step 1: Peak removal ====================
@@ -352,31 +350,16 @@ def step2_bayesian_optimization(df_clean, df_orig, signal_cols, bg_region):
     print(f"Background region: {bg_region[0]:.1f}–{bg_region[1]:.1f} nm ({np.sum(bg_mask)} points)")
     print(f"Number of spectra: {m}")
 
-    # Define objective with penalties to ensure reasonable baselines
+    # Define objective with MSE-relative penalties for consistent scaling
     def objective(log_lam, p, log_mu):
         lam = 10 ** log_lam
         mu = 10 ** log_mu
 
-        # Hard constraints to reject extreme p
-        if p < 0.008:
+        if p < 0.008 or p > 0.08:
             return -1e20
-        if p > 0.08:
-            return -1e20
-
-        # Soft penalties for unreasonable combos
-        penalty = 0
-        if p < 0.01:
-            penalty += (0.01 - p) * 1e10
-        if lam < 5e6:
-            penalty += (5e6 - lam) / 1e5 * 1e8
-        if mu < 1e8:
-            penalty += (1e8 - mu) / 1e7 * 1e8
 
         try:
-            z, _, converged = msbc(spectra_data, lam, mu, p, max_iter=MSBC_MAX_ITER, tol=ALS_TOL)
-
-            if not converged:
-                penalty += 1e9  # penalize non-convergence
+            z, converged = msbc(spectra_data, lam, mu, p, max_iter=MSBC_MAX_ITER, tol=ALS_TOL)
 
             residuals = (spectra_data - z)[:, bg_mask]
             residuals = residuals[finite_mask(residuals)]
@@ -384,51 +367,35 @@ def step2_bayesian_optimization(df_clean, df_orig, signal_cols, bg_region):
             if residuals.size < 3:
                 return -1e30
 
-            # MSE of residuals
             mse = np.mean(residuals ** 2)
+            mse_ref = max(mse, 1e-12)
 
-            # Normality penalty — good baselines yield near-normal residuals
-            normality_penalty = 0
+            penalties = 0.0
+
+            if not converged:
+                penalties += 10.0 * mse_ref
+
             if residuals.size >= 8:
-                from scipy.stats import normaltest
                 _, p_norm = normaltest(residuals)
-                if p_norm < 0.01:
-                    normality_penalty += 1e7 * (0.01 - p_norm)
+                if p_norm < 0.05:
+                    penalties += mse_ref * (1.0 - p_norm / 0.05)
 
-            # Smoothness penalty — variance of the 2nd difference
-            smoothness_penalty = 0
-            for k in range(z.shape[0]):
-                diff2 = np.diff(z[k, :], n=2)
-                diff2_var = np.var(diff2)
-                smoothness_penalty += diff2_var * 1e3
+            residual_skew = abs(skew(residuals))
+            if residual_skew > 1.0:
+                penalties += mse_ref * (residual_skew - 1.0)
 
-            # Reasonableness penalty — baseline should sit near a low quantile
-            reasonability_penalty = 0
             for k in range(z.shape[0]):
-                data_min = np.percentile(spectra_data[k, :], 10)
                 data_median = np.median(spectra_data[k, :])
                 baseline_mean = np.mean(z[k, :])
+                if abs(data_median) > 1e-12:
+                    ratio = baseline_mean / data_median
+                    if ratio > 0.8:
+                        penalties += mse_ref * (ratio - 0.8) * 5.0
+                    if ratio < 0.0:
+                        penalties += mse_ref * abs(ratio) * 5.0
 
-                if baseline_mean > data_median * 0.8:
-                    reasonability_penalty += 1e8
-                if baseline_mean < data_min * 0.5:
-                    reasonability_penalty += 1e8
-
-            # Symmetry: penalize excessive skew in residuals
-            residual_skew = abs(skew(residuals))
-            if residual_skew > 2:
-                skew_penalty = residual_skew * 1e6
-            else:
-                skew_penalty = 0
-
-            total_objective = (mse +
-                               smoothness_penalty +
-                               reasonability_penalty +
-                               normality_penalty +
-                               skew_penalty +
-                               penalty)
-
-            return -float(total_objective)
+            total_loss = mse + penalties
+            return -float(total_loss)
 
         except Exception as e:
             print(f"    Evaluation failed (lambda={lam:.1e}, p={p:.4f}, mu={mu:.1e}): {e}")
@@ -598,7 +565,7 @@ def step3_msbc_baseline_correction(df_clean, df_orig, signal_cols,
 
     # Run MSBC
     start_time = time.time()
-    baselines, relaxation, converged = msbc(
+    baselines, converged = msbc(
         spectra_clean, best_lambda, best_mu, best_p,
         max_iter=MSBC_MAX_ITER, tol=ALS_TOL
     )

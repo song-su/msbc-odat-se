@@ -109,9 +109,9 @@ def msbc(data, lambda_param, mu0, p=0.001, max_iter=10, tol=1e-6):
     z0 = np.percentile(data_clean, 10, axis=1).reshape(-1, 1) * np.ones((1, n))
     a0 = np.ones(m)
 
-    a_history = []
     z = np.zeros((m, n))
     z_prev = np.copy(z0)
+    a0_prev = np.ones(m)
     converged = False
 
     for _ in range(max_iter):
@@ -153,16 +153,15 @@ def msbc(data, lambda_param, mu0, p=0.001, max_iter=10, tol=1e-6):
         else:
             a0 = np.ones(m)
 
-        a_history.append(a0.copy())
-
-        change = np.linalg.norm(z - z_prev) / max(np.linalg.norm(z_prev), 1e-12)
-        if change < tol:
+        z_change = np.linalg.norm(z - z_prev) / max(np.linalg.norm(z_prev), 1e-12)
+        a0_change = np.linalg.norm(a0 - a0_prev) / max(np.linalg.norm(a0_prev), 1e-12)
+        if z_change < tol and a0_change < tol:
             converged = True
             break
         z_prev = np.copy(z)
+        a0_prev = a0.copy()
 
-    a = np.array(a_history).T if a_history else np.ones((m, 1))
-    return z, a, converged
+    return z, converged
 
 
 # ==================== Preprocessing ====================
@@ -257,24 +256,13 @@ class MSBCSolver(odatse.solver.SolverBase):
         lam = 10.0 ** log_lam
         mu = 10.0 ** log_mu
 
-        # Hard constraints
-        if p <= 0.0 or p >= 1.0:
+        if not (0.0 < p < 1.0):
             return 1e30
         if p < 0.008 or p > 0.08:
             return 1e20
 
-        penalty = 0.0
-
-        # Soft penalties
-        if p < 0.01:
-            penalty += (0.01 - p) * 1e10
-        if lam < 5e6:
-            penalty += (5e6 - lam) / 1e5 * 1e8
-        if mu < 1e8:
-            penalty += (1e8 - mu) / 1e7 * 1e8
-
         try:
-            z, _, converged = msbc(
+            z, converged = msbc(
                 self.spectra_data,
                 lam,
                 mu,
@@ -283,56 +271,40 @@ class MSBCSolver(odatse.solver.SolverBase):
                 tol=ALS_TOL,
             )
 
-            if not converged:
-                penalty += 1e9
-
             residuals = (self.spectra_data - z)[:, self.bg_mask]
             residuals = residuals[finite_mask(residuals)]
 
             if residuals.size < 3:
                 return 1e30
 
-            # 1) MSE in background region
             mse = np.mean(residuals ** 2)
+            mse_ref = max(mse, 1e-12)
 
-            # 2) Normality penalty
-            normality_penalty = 0.0
+            penalties = 0.0
+
+            if not converged:
+                penalties += 10.0 * mse_ref
+
             if residuals.size >= 8:
                 _, p_norm = normaltest(residuals)
-                if p_norm < 0.01:
-                    normality_penalty += 1e7 * (0.01 - p_norm)
+                if p_norm < 0.05:
+                    penalties += mse_ref * (1.0 - p_norm / 0.05)
 
-            # 3) Smoothness penalty
-            smoothness_penalty = 0.0
-            for k in range(z.shape[0]):
-                diff2 = np.diff(z[k, :], n=2)
-                diff2_var = np.var(diff2)
-                smoothness_penalty += diff2_var * 1e3
+            residual_skew = abs(skew(residuals))
+            if residual_skew > 1.0:
+                penalties += mse_ref * (residual_skew - 1.0)
 
-            # 4) Reasonability penalty
-            reasonability_penalty = 0.0
             for k in range(z.shape[0]):
-                data_min = np.percentile(self.spectra_data[k, :], 10)
                 data_median = np.median(self.spectra_data[k, :])
                 baseline_mean = np.mean(z[k, :])
+                if abs(data_median) > 1e-12:
+                    ratio = baseline_mean / data_median
+                    if ratio > 0.8:
+                        penalties += mse_ref * (ratio - 0.8) * 5.0
+                    if ratio < 0.0:
+                        penalties += mse_ref * abs(ratio) * 5.0
 
-                if baseline_mean > data_median * 0.8:
-                    reasonability_penalty += 1e8
-                if baseline_mean < data_min * 0.5:
-                    reasonability_penalty += 1e8
-
-            # 5) Skew penalty
-            residual_skew = abs(skew(residuals))
-            skew_penalty = residual_skew * 1e6 if residual_skew > 2 else 0.0
-
-            total_loss = (
-                mse
-                + smoothness_penalty
-                + reasonability_penalty
-                + normality_penalty
-                + skew_penalty
-                + penalty
-            )
+            total_loss = mse + penalties
 
             if not np.isfinite(total_loss):
                 return 1e30
@@ -358,7 +330,7 @@ def save_final_results(solver, best_x, output_dir):
     lam = 10.0 ** log_lam
     mu = 10.0 ** log_mu
 
-    z, _, converged = msbc(
+    z, converged = msbc(
         solver.spectra_data,
         lam,
         mu,
@@ -466,8 +438,6 @@ def save_final_results(solver, best_x, output_dir):
 
 # ==================== Main ====================
 def main():
-    # Let ODAT-SE parse the input TOML
-    sys.argv = [sys.argv[0]] + sys.argv[1:]
     info, run_mode = odatse.initialize()
     print("algorithm =", info.algorithm["name"])
     output_dir = info.base.get("output_dir", OUTPUT_DIR_FALLBACK)
